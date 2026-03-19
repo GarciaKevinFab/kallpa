@@ -31,7 +31,7 @@ App de autogestión emocional y prevención en salud mental para estudiantes uni
 
 - [Node.js](https://nodejs.org/) v18 o superior
 - [Python](https://python.org/) 3.11+ (para el backend)
-- [Expo CLI](https://docs.expo.dev/get-started/installation/) (`npm install -g expo-cli`)
+- [Yarn](https://yarnpkg.com/) (`npm install -g yarn`)
 - [Expo Go](https://expo.dev/go) en tu celular (Android/iOS)
 - Git
 
@@ -47,13 +47,13 @@ cd kallpa
 ### 2. Instalar dependencias del frontend
 
 ```bash
-npm install
+yarn install
 ```
 
 ### 3. Iniciar la app móvil (desarrollo)
 
 ```bash
-npx expo start
+yarn start
 ```
 
 Esto abrirá Metro Bundler. Opciones para ver la app:
@@ -124,14 +124,18 @@ kallpa/
 
 ```bash
 # Desarrollo
-npx expo start                    # Iniciar Metro Bundler
-npx expo start --clear            # Limpiar caché e iniciar
+yarn start                        # Iniciar Metro Bundler
+yarn start --clear                # Limpiar caché e iniciar
+yarn android                      # Abrir en emulador Android
+yarn ios                          # Abrir en simulador iOS
+yarn web                          # Abrir en navegador
 
 # Build de producción
-npx eas build --platform android  # Build Android (APK/AAB)
-npx eas build --platform ios      # Build iOS
+yarn eas build --platform android # Build Android (APK/AAB)
+yarn eas build --platform ios     # Build iOS
 
 # Backend
+cd backend
 uvicorn main:app --reload         # Servidor de desarrollo
 ```
 
