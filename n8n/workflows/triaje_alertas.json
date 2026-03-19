@@ -1,0 +1,364 @@
+{
+  "name": "Kallpa - Triaje y Alertas de Seguimiento",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "triaje-alertas",
+        "responseMode": "responseNode",
+        "options": {
+          "responseContentType": "application/json"
+        }
+      },
+      "id": "node-webhook-triaje",
+      "name": "Webhook Triaje",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "triaje-alertas"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extraer y validar datos de la alerta\nconst body = $input.first().json.body || $input.first().json;\n\nconst severidad = body.severidad || 'bajo';\nconst consentimiento = body.consentimiento || false;\nconst psicologoId = body.psicologo_id || null;\nconst reporteCifrado = body.reporte_cifrado || null;\nconst correoAnonimo = body.correo_anonimo || null;\nconst notasContexto = body.notas_contexto || null;\n\n// Generar referencia unica para tracking anonimo\nconst referencia = `ALT-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;\n\n// Determinar nivel numerico de severidad\nconst nivelMap = { 'bajo': 1, 'medio': 2, 'alto': 3, 'critico': 4 };\nconst nivel = nivelMap[severidad] || 1;\n\n// Timestamp actual\nconst timestamp = new Date().toISOString();\n\nreturn {\n  json: {\n    referencia,\n    severidad,\n    nivel,\n    consentimiento,\n    psicologoId,\n    reporteCifrado,\n    correoAnonimo,\n    notasContexto,\n    timestamp,\n    requiereNotificacion: nivel >= 3 && consentimiento,\n    esCritico: nivel === 4\n  }\n};"
+      },
+      "id": "node-extract-alerta",
+      "name": "Extraer Datos Alerta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-consent",
+              "leftValue": "={{ $json.consentimiento }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-check-consent",
+      "name": "Verificar Consentimiento",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-severity",
+              "leftValue": "={{ $json.nivel }}",
+              "rightValue": 3,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-check-severity",
+      "name": "Severidad Alta/Critica?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [860, 200]
+    },
+    {
+      "parameters": {
+        "sendTo": "bienestar-urgente@kallpa.edu.pe",
+        "subject": "=ALERTA {{ $json.severidad.toUpperCase() }} - Seguimiento Requerido [{{ $json.referencia }}]",
+        "emailType": "html",
+        "message": "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\">\n  <div style=\"background-color: {{ $json.esCritico ? '#D32F2F' : '#F57C00' }}; color: white; padding: 20px; border-radius: 8px 8px 0 0;\">\n    <h1 style=\"margin: 0;\">ALERTA DE SEGUIMIENTO</h1>\n    <p style=\"margin: 5px 0 0;\">Nivel: {{ $json.severidad.toUpperCase() }}</p>\n  </div>\n  <div style=\"background-color: #f9f9f9; padding: 20px; border-radius: 0 0 8px 8px;\">\n    <table style=\"width: 100%; border-collapse: collapse;\">\n      <tr>\n        <td style=\"padding: 8px; font-weight: bold;\">Referencia:</td>\n        <td style=\"padding: 8px;\">{{ $json.referencia }}</td>\n      </tr>\n      <tr>\n        <td style=\"padding: 8px; font-weight: bold;\">Severidad:</td>\n        <td style=\"padding: 8px;\">{{ $json.severidad }}</td>\n      </tr>\n      <tr>\n        <td style=\"padding: 8px; font-weight: bold;\">Consentimiento:</td>\n        <td style=\"padding: 8px;\">El estudiante ha consentido ser contactado</td>\n      </tr>\n      <tr>\n        <td style=\"padding: 8px; font-weight: bold;\">Psicologo asignado:</td>\n        <td style=\"padding: 8px;\">{{ $json.psicologoId || 'Sin asignar' }}</td>\n      </tr>\n      <tr>\n        <td style=\"padding: 8px; font-weight: bold;\">Fecha/Hora:</td>\n        <td style=\"padding: 8px;\">{{ $json.timestamp }}</td>\n      </tr>\n    </table>\n    <div style=\"margin-top: 15px; padding: 10px; background-color: #fff3e0; border-radius: 4px;\">\n      <strong>Notas de contexto:</strong><br>\n      {{ $json.notasContexto || 'Sin notas adicionales' }}\n    </div>\n    <hr style=\"margin: 20px 0;\">\n    <p style=\"color: #666; font-size: 12px;\">Este correo es confidencial. La informacion del estudiante esta cifrada y solo puede ser leida por el psicologo asignado.</p>\n  </div>\n</div>",
+        "options": {
+          "replyTo": "bienestar@kallpa.edu.pe"
+        }
+      },
+      "id": "node-notify-psychologist",
+      "name": "Notificar Psicologo",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1080, 100],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "CONFIGURE_ME",
+          "name": "Gmail Kallpa"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "CONFIGURE_ME_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Alertas",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "referencia": "={{ $('Extraer Datos Alerta').item.json.referencia }}",
+            "severidad": "={{ $('Extraer Datos Alerta').item.json.severidad }}",
+            "nivel": "={{ $('Extraer Datos Alerta').item.json.nivel }}",
+            "consentimiento": "={{ $('Extraer Datos Alerta').item.json.consentimiento }}",
+            "psicologo_id": "={{ $('Extraer Datos Alerta').item.json.psicologoId || 'N/A' }}",
+            "timestamp": "={{ $('Extraer Datos Alerta').item.json.timestamp }}",
+            "notificacion_enviada": "={{ $('Extraer Datos Alerta').item.json.requiereNotificacion }}",
+            "notas": "={{ $('Extraer Datos Alerta').item.json.notasContexto || '' }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "node-log-sheet-consent",
+      "name": "Registrar en Sheets (con consentimiento)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1300, 200],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Google Sheets Kallpa"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "CONFIGURE_ME_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Alertas_Anonimas",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "referencia": "={{ $('Extraer Datos Alerta').item.json.referencia }}",
+            "severidad": "={{ $('Extraer Datos Alerta').item.json.severidad }}",
+            "nivel": "={{ $('Extraer Datos Alerta').item.json.nivel }}",
+            "consentimiento": "=false",
+            "timestamp": "={{ $('Extraer Datos Alerta').item.json.timestamp }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "node-log-sheet-anonymous",
+      "name": "Registrar en Sheets (anonimo)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [860, 420],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Google Sheets Kallpa"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preparar respuesta con consentimiento\nconst data = $('Extraer Datos Alerta').item.json;\n\nreturn {\n  json: {\n    status: 'registrado',\n    referencia: data.referencia,\n    mensaje: data.requiereNotificacion \n      ? 'Alerta registrada. Se ha notificado al equipo de bienestar para seguimiento.'\n      : 'Alerta registrada con seguimiento activado.',\n    seguimiento_activado: true,\n    severidad: data.severidad,\n    notificacion_enviada: data.requiereNotificacion\n  }\n};"
+      },
+      "id": "node-response-consent",
+      "name": "Respuesta (con consentimiento)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1520, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preparar respuesta anonima\nconst data = $('Extraer Datos Alerta').item.json;\n\nreturn {\n  json: {\n    status: 'registrado',\n    referencia: data.referencia,\n    mensaje: 'Alerta registrada de forma anonima. Si necesitas ayuda inmediata, contacta la linea de crisis: 0800-4141.',\n    seguimiento_activado: false,\n    severidad: data.severidad,\n    notificacion_enviada: false\n  }\n};"
+      },
+      "id": "node-response-anonymous",
+      "name": "Respuesta (anonima)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 420]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "node-respond-triaje",
+      "name": "Responder Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1740, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Triaje": {
+      "main": [
+        [
+          {
+            "node": "Extraer Datos Alerta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Datos Alerta": {
+      "main": [
+        [
+          {
+            "node": "Verificar Consentimiento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar Consentimiento": {
+      "main": [
+        [
+          {
+            "node": "Severidad Alta/Critica?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Registrar en Sheets (anonimo)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Severidad Alta/Critica?": {
+      "main": [
+        [
+          {
+            "node": "Notificar Psicologo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Registrar en Sheets (con consentimiento)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notificar Psicologo": {
+      "main": [
+        [
+          {
+            "node": "Registrar en Sheets (con consentimiento)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar en Sheets (con consentimiento)": {
+      "main": [
+        [
+          {
+            "node": "Respuesta (con consentimiento)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar en Sheets (anonimo)": {
+      "main": [
+        [
+          {
+            "node": "Respuesta (anonima)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respuesta (con consentimiento)": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respuesta (anonima)": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "kallpa",
+      "id": "tag-kallpa"
+    },
+    {
+      "name": "triaje",
+      "id": "tag-triaje"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2026-03-18T00:00:00.000Z",
+  "versionId": "1"
+}

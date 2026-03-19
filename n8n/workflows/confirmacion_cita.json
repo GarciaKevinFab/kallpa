@@ -1,0 +1,220 @@
+{
+  "name": "Kallpa - Confirmacion de Cita",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "confirmacion",
+        "responseMode": "responseNode",
+        "options": {
+          "responseContentType": "application/json"
+        }
+      },
+      "id": "node-webhook-confirmacion",
+      "name": "Webhook Confirmacion",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "confirmacion"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extraer datos de la confirmacion de cita\nconst body = $input.first().json.body || $input.first().json;\n\nconst citaId = body.cita_id;\nconst correoAnonimo = body.correo_anonimo || null;\nconst fecha = body.fecha;\nconst hora = body.hora;\nconst psicologoNombre = body.psicologo_nombre || 'Profesional de Bienestar';\nconst modalidad = body.modalidad || 'presencial';\nconst accion = body.accion || 'confirmar'; // confirmar | cancelar | reprogramar\n\nif (!citaId) {\n  throw new Error('Se requiere cita_id para la confirmacion');\n}\n\nconst timestamp = new Date().toISOString();\n\n// Determinar ubicacion segun modalidad\nlet ubicacion = '';\nif (modalidad === 'virtual') {\n  ubicacion = 'Se enviara enlace de videollamada 15 minutos antes de la cita.';\n} else {\n  ubicacion = 'Oficina de Bienestar Universitario, Pabellon B, 2do piso.';\n}\n\nreturn {\n  json: {\n    citaId,\n    correoAnonimo,\n    fecha,\n    hora,\n    psicologoNombre,\n    modalidad,\n    accion,\n    ubicacion,\n    timestamp,\n    tieneCorreo: !!correoAnonimo\n  }\n};"
+      },
+      "id": "node-extract-confirmacion",
+      "name": "Extraer Datos Confirmacion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-has-email",
+              "leftValue": "={{ $json.tieneCorreo }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-has-email",
+      "name": "Tiene Correo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.correoAnonimo }}",
+        "subject": "=Confirmacion de Cita - Kallpa [{{ $json.citaId }}]",
+        "emailType": "html",
+        "message": "<div style=\"font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 0;\">\n  <!-- Header -->\n  <div style=\"background: linear-gradient(135deg, #4A90D9, #357ABD); color: white; padding: 30px 20px; border-radius: 12px 12px 0 0; text-align: center;\">\n    <h1 style=\"margin: 0; font-size: 28px; letter-spacing: 1px;\">Kallpa</h1>\n    <p style=\"margin: 8px 0 0; font-size: 14px; opacity: 0.9;\">Servicio de Bienestar Universitario</p>\n  </div>\n  \n  <!-- Body -->\n  <div style=\"background-color: #ffffff; padding: 30px 20px; border: 1px solid #e0e0e0; border-top: none;\">\n    <div style=\"text-align: center; margin-bottom: 25px;\">\n      <div style=\"display: inline-block; background-color: #E8F5E9; color: #2E7D32; padding: 8px 20px; border-radius: 20px; font-weight: bold;\">\n        Cita Confirmada\n      </div>\n    </div>\n    \n    <h2 style=\"color: #333; margin-top: 0;\">Detalles de tu cita</h2>\n    \n    <table style=\"width: 100%; border-collapse: collapse; margin: 20px 0;\">\n      <tr style=\"border-bottom: 1px solid #f0f0f0;\">\n        <td style=\"padding: 12px 8px; font-weight: bold; color: #555; width: 40%;\">Referencia:</td>\n        <td style=\"padding: 12px 8px; color: #333;\">{{ $json.citaId }}</td>\n      </tr>\n      <tr style=\"border-bottom: 1px solid #f0f0f0;\">\n        <td style=\"padding: 12px 8px; font-weight: bold; color: #555;\">Fecha:</td>\n        <td style=\"padding: 12px 8px; color: #333;\">{{ $json.fecha }}</td>\n      </tr>\n      <tr style=\"border-bottom: 1px solid #f0f0f0;\">\n        <td style=\"padding: 12px 8px; font-weight: bold; color: #555;\">Hora:</td>\n        <td style=\"padding: 12px 8px; color: #333;\">{{ $json.hora }}</td>\n      </tr>\n      <tr style=\"border-bottom: 1px solid #f0f0f0;\">\n        <td style=\"padding: 12px 8px; font-weight: bold; color: #555;\">Profesional:</td>\n        <td style=\"padding: 12px 8px; color: #333;\">{{ $json.psicologoNombre }}</td>\n      </tr>\n      <tr style=\"border-bottom: 1px solid #f0f0f0;\">\n        <td style=\"padding: 12px 8px; font-weight: bold; color: #555;\">Modalidad:</td>\n        <td style=\"padding: 12px 8px; color: #333;\">{{ $json.modalidad }}</td>\n      </tr>\n      <tr>\n        <td style=\"padding: 12px 8px; font-weight: bold; color: #555;\">Ubicacion:</td>\n        <td style=\"padding: 12px 8px; color: #333;\">{{ $json.ubicacion }}</td>\n      </tr>\n    </table>\n    \n    <div style=\"background-color: #FFF8E1; border-left: 4px solid #FFC107; padding: 15px; margin: 20px 0; border-radius: 0 4px 4px 0;\">\n      <strong>Recordatorio:</strong> Si necesitas cancelar o reprogramar, hazlo con al menos 24 horas de anticipacion a traves de la app.\n    </div>\n  </div>\n  \n  <!-- Footer -->\n  <div style=\"background-color: #f5f5f5; padding: 20px; border-radius: 0 0 12px 12px; border: 1px solid #e0e0e0; border-top: none; text-align: center;\">\n    <p style=\"color: #888; font-size: 12px; margin: 0;\">Este correo fue enviado automaticamente por el sistema Kallpa.</p>\n    <p style=\"color: #888; font-size: 12px; margin: 5px 0 0;\">Tu identidad se mantiene protegida en todo momento.</p>\n    <p style=\"color: #888; font-size: 11px; margin: 10px 0 0;\">Si necesitas ayuda inmediata, llama a la linea de crisis: 0800-4141</p>\n  </div>\n</div>",
+        "options": {
+          "replyTo": "bienestar@kallpa.edu.pe"
+        }
+      },
+      "id": "node-send-confirmation-email",
+      "name": "Enviar Email Confirmacion",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [860, 200],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "CONFIGURE_ME",
+          "name": "Gmail Kallpa"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Respuesta cuando se envio email\nconst data = $('Extraer Datos Confirmacion').item.json;\n\nreturn {\n  json: {\n    status: 'confirmado',\n    cita_id: data.citaId,\n    mensaje: 'Confirmacion enviada al correo proporcionado.',\n    email_enviado: true,\n    fecha: data.fecha,\n    hora: data.hora,\n    timestamp: data.timestamp\n  }\n};"
+      },
+      "id": "node-response-with-email",
+      "name": "Respuesta (email enviado)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Respuesta cuando no hay email\nconst data = $('Extraer Datos Confirmacion').item.json;\n\nreturn {\n  json: {\n    status: 'confirmado',\n    cita_id: data.citaId,\n    mensaje: 'Cita confirmada. No se envio correo porque no se proporciono direccion.',\n    email_enviado: false,\n    fecha: data.fecha,\n    hora: data.hora,\n    timestamp: data.timestamp\n  }\n};"
+      },
+      "id": "node-response-no-email",
+      "name": "Respuesta (sin email)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "node-respond-confirmacion",
+      "name": "Responder Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Confirmacion": {
+      "main": [
+        [
+          {
+            "node": "Extraer Datos Confirmacion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Datos Confirmacion": {
+      "main": [
+        [
+          {
+            "node": "Tiene Correo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tiene Correo?": {
+      "main": [
+        [
+          {
+            "node": "Enviar Email Confirmacion",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respuesta (sin email)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Email Confirmacion": {
+      "main": [
+        [
+          {
+            "node": "Respuesta (email enviado)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respuesta (email enviado)": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respuesta (sin email)": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "kallpa",
+      "id": "tag-kallpa"
+    },
+    {
+      "name": "confirmacion",
+      "id": "tag-confirmacion"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2026-03-18T00:00:00.000Z",
+  "versionId": "1"
+}

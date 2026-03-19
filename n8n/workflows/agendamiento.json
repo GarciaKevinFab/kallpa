@@ -1,0 +1,260 @@
+{
+  "name": "Kallpa - Agendamiento de Citas",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agendamiento",
+        "responseMode": "responseNode",
+        "options": {
+          "responseContentType": "application/json"
+        }
+      },
+      "id": "node-webhook-trigger",
+      "name": "Webhook Agendamiento",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "agendamiento"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extraer y validar datos de la solicitud de cita\nconst body = $input.first().json.body || $input.first().json;\n\nconst fecha = body.fecha;\nconst hora = body.hora;\nconst psicologoId = body.psicologo_id;\nconst modalidad = body.modalidad || 'presencial';\nconst reporteCifrado = body.reporte_cifrado || null;\nconst correoAnonimo = body.correo_anonimo || null;\n\n// Validaciones basicas\nif (!fecha || !hora || !psicologoId) {\n  throw new Error('Datos incompletos: se requiere fecha, hora y psicologo_id');\n}\n\n// Construir fecha/hora para Google Calendar\nconst startDateTime = `${fecha}T${hora}:00`;\nconst [horaNum, minNum] = hora.split(':').map(Number);\nconst endMinutes = minNum + 50; // Sesion de 50 minutos\nconst endHour = horaNum + Math.floor(endMinutes / 60);\nconst endMin = endMinutes % 60;\nconst endTime = `${String(endHour).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;\nconst endDateTime = `${fecha}T${endTime}:00`;\n\n// Mapeo de psicologos a calendarios\nconst calendarMap = {\n  'psi-001': 'psi001@kallpa.edu.pe',\n  'psi-002': 'psi002@kallpa.edu.pe',\n  'psi-003': 'psi003@kallpa.edu.pe',\n  'psi-004': 'psi004@kallpa.edu.pe'\n};\n\nconst calendarId = calendarMap[psicologoId] || 'primary';\n\n// Mapeo de psicologos a nombres\nconst nameMap = {\n  'psi-001': 'Dra. Martinez',\n  'psi-002': 'Lic. Rodriguez',\n  'psi-003': 'Dr. Huaman',\n  'psi-004': 'Lic. Quispe'\n};\n\nconst psicologoNombre = nameMap[psicologoId] || 'Psicologo';\n\n// Generar ID unico para la cita\nconst citaId = `cita-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;\n\nreturn {\n  json: {\n    citaId,\n    fecha,\n    hora,\n    endTime,\n    startDateTime,\n    endDateTime,\n    psicologoId,\n    psicologoNombre,\n    calendarId,\n    modalidad,\n    reporteCifrado,\n    correoAnonimo,\n    titulo: `Cita Bienestar - ${modalidad}`,\n    descripcion: `Sesion de bienestar universitario\\nModalidad: ${modalidad}\\nPsicologo: ${psicologoNombre}`\n  }\n};"
+      },
+      "id": "node-extract-data",
+      "name": "Extraer Datos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "={{ $json.calendarId }}",
+          "mode": "id"
+        },
+        "start": "={{ $json.startDateTime }}",
+        "end": "={{ $json.endDateTime }}",
+        "additionalFields": {
+          "summary": "={{ $json.titulo }}",
+          "description": "={{ $json.descripcion }}",
+          "location": "={{ $json.modalidad === 'virtual' ? 'Enlace de videollamada (se enviara por correo)' : 'Oficina de Bienestar Universitario' }}",
+          "conferenceDataVersion": 1,
+          "sendUpdates": "all"
+        }
+      },
+      "id": "node-google-calendar",
+      "name": "Crear Evento Calendar",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 3,
+      "position": [640, 300],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Google Calendar Kallpa"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-email-exists",
+              "leftValue": "={{ $('Extraer Datos').item.json.correoAnonimo }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-check-email",
+      "name": "Tiene Correo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [860, 300]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Extraer Datos').item.json.correoAnonimo }}",
+        "subject": "Confirmacion de Cita - Servicio de Bienestar Kallpa",
+        "emailType": "html",
+        "message": "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\">\n  <div style=\"background-color: #4A90D9; color: white; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;\">\n    <h1 style=\"margin: 0;\">Kallpa</h1>\n    <p style=\"margin: 5px 0 0;\">Servicio de Bienestar Universitario</p>\n  </div>\n  <div style=\"background-color: #f9f9f9; padding: 20px; border-radius: 0 0 8px 8px;\">\n    <h2>Tu cita ha sido confirmada</h2>\n    <table style=\"width: 100%; border-collapse: collapse;\">\n      <tr>\n        <td style=\"padding: 8px; font-weight: bold;\">Fecha:</td>\n        <td style=\"padding: 8px;\">{{ $('Extraer Datos').item.json.fecha }}</td>\n      </tr>\n      <tr>\n        <td style=\"padding: 8px; font-weight: bold;\">Hora:</td>\n        <td style=\"padding: 8px;\">{{ $('Extraer Datos').item.json.hora }} - {{ $('Extraer Datos').item.json.endTime }}</td>\n      </tr>\n      <tr>\n        <td style=\"padding: 8px; font-weight: bold;\">Profesional:</td>\n        <td style=\"padding: 8px;\">{{ $('Extraer Datos').item.json.psicologoNombre }}</td>\n      </tr>\n      <tr>\n        <td style=\"padding: 8px; font-weight: bold;\">Modalidad:</td>\n        <td style=\"padding: 8px;\">{{ $('Extraer Datos').item.json.modalidad }}</td>\n      </tr>\n    </table>\n    <hr style=\"margin: 20px 0;\">\n    <p style=\"color: #666; font-size: 12px;\">Este correo fue enviado de forma automatica. Tu identidad se mantiene protegida en todo momento.</p>\n  </div>\n</div>",
+        "options": {
+          "replyTo": "bienestar@kallpa.edu.pe"
+        }
+      },
+      "id": "node-send-email",
+      "name": "Enviar Confirmacion Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1080, 200],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "CONFIGURE_ME",
+          "name": "Gmail Kallpa"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preparar respuesta exitosa\nconst extractData = $('Extraer Datos').item.json;\nconst calendarEvent = $('Crear Evento Calendar').item.json;\n\nreturn {\n  json: {\n    cita_id: extractData.citaId,\n    status: 'confirmado',\n    mensaje: 'Cita agendada exitosamente',\n    fecha: extractData.fecha,\n    hora_inicio: extractData.hora,\n    hora_fin: extractData.endTime,\n    psicologo: extractData.psicologoNombre,\n    modalidad: extractData.modalidad,\n    calendar_event_id: calendarEvent.id || null,\n    email_enviado: true\n  }\n};"
+      },
+      "id": "node-prepare-response-email",
+      "name": "Preparar Respuesta (con email)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Respuesta sin email\nconst extractData = $('Extraer Datos').item.json;\nconst calendarEvent = $('Crear Evento Calendar').item.json;\n\nreturn {\n  json: {\n    cita_id: extractData.citaId,\n    status: 'confirmado',\n    mensaje: 'Cita agendada exitosamente (sin correo de confirmacion)',\n    fecha: extractData.fecha,\n    hora_inicio: extractData.hora,\n    hora_fin: extractData.endTime,\n    psicologo: extractData.psicologoNombre,\n    modalidad: extractData.modalidad,\n    calendar_event_id: calendarEvent.id || null,\n    email_enviado: false\n  }\n};"
+      },
+      "id": "node-prepare-response-no-email",
+      "name": "Preparar Respuesta (sin email)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "node-respond-success",
+      "name": "Responder Exito",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1520, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Agendamiento": {
+      "main": [
+        [
+          {
+            "node": "Extraer Datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Datos": {
+      "main": [
+        [
+          {
+            "node": "Crear Evento Calendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear Evento Calendar": {
+      "main": [
+        [
+          {
+            "node": "Tiene Correo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tiene Correo?": {
+      "main": [
+        [
+          {
+            "node": "Enviar Confirmacion Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar Respuesta (sin email)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Confirmacion Gmail": {
+      "main": [
+        [
+          {
+            "node": "Preparar Respuesta (con email)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Respuesta (con email)": {
+      "main": [
+        [
+          {
+            "node": "Responder Exito",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Respuesta (sin email)": {
+      "main": [
+        [
+          {
+            "node": "Responder Exito",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "kallpa",
+      "id": "tag-kallpa"
+    },
+    {
+      "name": "agendamiento",
+      "id": "tag-agendamiento"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2026-03-18T00:00:00.000Z",
+  "versionId": "1"
+}
